@@ -9,13 +9,6 @@ Major changes in this fork:
 - Fixed shared-element renderer lifecycle handling for reopen, unmount, and nested/tab navigation edge cases under the new architecture.
 - Refreshed the example app for the current Expo-generated native project structure.
 
-# React Navigation Shared Element <!-- omit in toc -->
-
-React Navigation bindings for [react-native-shared-element](https://github.com/IjzerenHein/react-native-shared-element) 💫
-
-![react-navigation-shared-element-gif-iOS](rnse-ios.gif)
-![react-navigation-shared-element-gif-Android](rnse-android.gif)
-
 ## Local development with Reach frontend
 
 For Reach Progress app development, keep these repositories as siblings:
@@ -47,6 +40,13 @@ pnpm install
 ```
 
 The helper script lives at `frontend/scripts/shared-element-deps.mjs`. By default it assumes these repos are siblings of `frontend`, but you can override that with `REACT_NATIVE_SHARED_ELEMENT_PATH` and `REACT_NAVIGATION_SHARED_ELEMENT_PATH`.
+
+# React Navigation Shared Element <!-- omit in toc -->
+
+React Navigation bindings for [react-native-shared-element](https://github.com/IjzerenHein/react-native-shared-element) 💫
+
+![react-navigation-shared-element-gif-iOS](rnse-ios.gif)
+![react-navigation-shared-element-gif-Android](rnse-android.gif)
 
 ## Documentation
 
