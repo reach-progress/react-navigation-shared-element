@@ -16,6 +16,38 @@ React Navigation bindings for [react-native-shared-element](https://github.com/I
 ![react-navigation-shared-element-gif-iOS](rnse-ios.gif)
 ![react-navigation-shared-element-gif-Android](rnse-android.gif)
 
+## Local development with Reach frontend
+
+For Reach Progress app development, keep these repositories as siblings:
+
+```text
+code/
+  frontend/
+  react-native-shared-element/
+  react-navigation-shared-element/
+```
+
+From `frontend`, switch the app to the local checkouts with:
+
+```bash
+pnpm shared-elements:use-local
+pnpm install
+```
+
+That rewrites the frontend app dependencies to `file:../react-native-shared-element` and `file:../react-navigation-shared-element`.
+
+After native code changes in either shared-element package, rebuild the app from `frontend` with `pnpm ios` or `pnpm android`.
+
+When you want tarball snapshots instead of live local paths:
+
+```bash
+pnpm shared-elements:tar
+pnpm shared-elements:use-tar
+pnpm install
+```
+
+The helper script lives at `frontend/scripts/shared-element-deps.mjs`. By default it assumes these repos are siblings of `frontend`, but you can override that with `REACT_NATIVE_SHARED_ELEMENT_PATH` and `REACT_NAVIGATION_SHARED_ELEMENT_PATH`.
+
 ## Documentation
 
 - [Shared element for the React Navigation 5/6 API](./docs/API.md)
