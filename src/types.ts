@@ -38,8 +38,6 @@ export type SharedElementConfig =
 
 export type SharedElementsConfig = SharedElementConfig[];
 
-export type SharedElementAnimatedValue = any;
-
 export type SharedElementRoute = {
   key: string;
   name: string;

@@ -4,15 +4,13 @@ import { StyleSheet, Text, TouchableOpacity, View, Alert } from "react-native";
 import { Colors } from "./Colors";
 import { Icon } from "./Icon";
 
-type Issue = "android" | "ios" | "v4" | "v5" | "v6";
+type Issue = "android" | "ios" | "v5" | "v6";
 
 type Props = {
   title: string;
-  ComponentV4?: React.ComponentType<any> | null;
   Component?: React.ComponentType<any> | null;
   issue?: boolean | Issue[];
   onPress?: () => any;
-  v4?: boolean;
 };
 
 function onPressInvalidTest() {
@@ -23,20 +21,16 @@ function onPressInvalidTest() {
 }
 
 export const Test = (props: Props) => {
-  const { title, onPress, Component, ComponentV4, v4, issue } = props;
-  const isValid = (v4 && ComponentV4) || (!v4 && Component);
-  if (!Component && !ComponentV4) {
+  const { title, onPress, Component, issue } = props;
+  const isValid = Boolean(Component);
+  if (!Component) {
     return (
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionText}>{title.toUpperCase()}</Text>
       </View>
     );
   }
-  const hasIssue =
-    issue === true ||
-    (Array.isArray(issue) &&
-      ((v4 && issue.includes("v4")) ||
-        (!v4 && (issue.includes("v5") || issue.includes("v6")))));
+  const hasIssue = issue === true || (Array.isArray(issue) && issue.length > 0);
   return (
     <TouchableOpacity
       style={styles.container}
@@ -53,7 +47,7 @@ export const Test = (props: Props) => {
       ) : undefined}
       <Icon
         style={[styles.icon, !isValid && styles.iconInvalid]}
-        name="ios-arrow-forward"
+        name="arrow-forward"
       />
     </TouchableOpacity>
   );

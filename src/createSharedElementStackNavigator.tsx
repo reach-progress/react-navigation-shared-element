@@ -1,7 +1,6 @@
 import {
   useNavigationBuilder,
   createNavigatorFactory,
-  RouteConfig,
   StackRouter,
   StackRouterOptions,
   StackNavigationState,
@@ -13,13 +12,10 @@ import {
 import {
   CardAnimationContext,
   StackView,
+  StackNavigationEventMap,
   StackNavigationOptions,
   createStackNavigator,
 } from "@react-navigation/stack";
-import {
-  StackNavigationConfig,
-  StackNavigationEventMap,
-} from "@react-navigation/stack/lib/typescript/src/types";
 import * as React from "react";
 import { Platform } from "react-native";
 
@@ -39,24 +35,18 @@ let _navigatorId = 1;
 
 export default function createSharedElementStackNavigator<
   ParamList extends ParamListBase
->(options?: { name?: string; debug?: boolean }) {
-  // Verify that no other options than 'name' or 'debug' are provided.
-  // This might indicate that the user is still using navigation 4 but
-  // didn't change the import to `react-navigation-shared-element/build/v4`.
-  if (
-    options &&
-    Object.keys(options).filter((key) => key !== "name" && key !== "debug")
-      .length > 0
-  ) {
-    throw new Error(
-      `Invalid options specified to 'createSharedElementStackNavigator'. If you are using react-navigation 4, please import from 'react-navigation-shared-element/build/v4'`
-    );
-  }
-
+>(options?: {
+  name?: string;
+  debug?: boolean;
+  nativeDuration?: number;
+  nativeDelay?: number;
+}) {
   const navigatorId =
     options && options.name ? options.name : `stack${_navigatorId}`;
   _navigatorId++;
   const debug = options?.debug || false;
+  const nativeDuration = options?.nativeDuration;
+  const nativeDelay = options?.nativeDelay;
 
   const rendererDataProxy = new SharedElementRendererProxy();
 
@@ -66,7 +56,7 @@ export default function createSharedElementStackNavigator<
     ReturnType<typeof createStackNavigator>["Navigator"]
   > &
     StackRouterOptions &
-    StackNavigationConfig;
+    Record<string, any>;
 
   function SharedElementStackNavigator({
     initialRouteName,
@@ -86,6 +76,7 @@ export default function createSharedElementStackNavigator<
         StackNavigationOptions,
         StackNavigationEventMap
       >(StackRouter, {
+        id: (rest as any).id ?? navigatorId,
         initialRouteName,
         children,
         screenOptions:
@@ -106,7 +97,7 @@ export default function createSharedElementStackNavigator<
 
     React.useEffect(
       () =>
-        navigation.addListener?.("tabPress", (e) => {
+        (navigation as any).addListener?.("tabPress", (e: EventArg<"tabPress", true>) => {
           const isFocused = navigation.isFocused();
 
           // Run the operation in the next frame so we're sure all listeners have been run
@@ -115,7 +106,7 @@ export default function createSharedElementStackNavigator<
             if (
               state.index > 0 &&
               isFocused &&
-              !(e as EventArg<"tabPress", true>).defaultPrevented
+              !e.defaultPrevented
             ) {
               // When user taps on already focused tab and we're inside the tab,
               // reset the stack to replicate native behaviour
@@ -148,7 +139,11 @@ export default function createSharedElementStackNavigator<
           // then don't bother creating a renderer here, but use that one instead
           if (!rendererData) {
             rendererDataRef.current =
-              rendererDataRef.current || new SharedElementRendererData();
+              rendererDataRef.current ||
+              new SharedElementRendererData({
+                nativeDuration,
+                nativeDelay,
+              });
             rendererDataProxy.source = rendererDataRef.current;
           } else {
             rendererDataProxy.source = rendererData;
@@ -176,27 +171,17 @@ export default function createSharedElementStackNavigator<
     );
   }
 
-  const navigatorFactory = createNavigatorFactory<
-    StackNavigationState<ParamList>,
-    StackNavigationOptions,
-    StackNavigationEventMap,
-    typeof SharedElementStackNavigator
-  >(SharedElementStackNavigator);
+  const navigatorFactory = createNavigatorFactory(
+    SharedElementStackNavigator as React.ComponentType<any>
+  );
 
-  const { Navigator, Screen } = navigatorFactory<ParamList>();
+  const { Navigator, Screen } = navigatorFactory();
 
-  type ScreenProps<RouteName extends keyof ParamList> = Omit<
-    RouteConfig<
-      ParamList,
-      RouteName,
-      StackNavigationState<ParamList>,
-      StackNavigationOptions,
-      StackNavigationEventMap
-    >,
-    "component" | "children"
-  > & {
+  type ScreenProps<RouteName extends keyof ParamList> = {
+    name: RouteName;
     component: SharedElementSceneComponent<any>;
     sharedElements?: SharedElementsComponentConfig;
+    [key: string]: any;
 
     /**
      * @deprecated
@@ -217,12 +202,15 @@ export default function createSharedElementStackNavigator<
   function getSharedElementsChildrenProps(children: React.ReactNode) {
     return React.Children.toArray(children).reduce<any[]>((acc, child) => {
       if (React.isValidElement(child)) {
-        if (child.type === wrapScreen) {
-          acc.push(child.props);
+        const element = child as React.ReactElement<any>;
+        if (element.type === wrapScreen) {
+          acc.push(element.props);
         }
 
-        if (child.type === React.Fragment) {
-          acc.push(...getSharedElementsChildrenProps(child.props.children));
+        if (element.type === React.Fragment) {
+          acc.push(
+            ...getSharedElementsChildrenProps((element.props as any).children)
+          );
         }
       }
       return acc;

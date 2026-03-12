@@ -12,13 +12,11 @@
 ### Features
 
 - Suppport for react-navigation 5 & 6 🚀
-- Unifies codebase to support both the react-navigation 4 and 5/6 APIs
 - New `example` app to showcase and test navigation scenarios
 - Recommended upgrading to react-native-shared-element@0.8.x for the latest bug-fixes
 
 ### Breaking changes
 
-- React navigation 4 is now supported through the `createSharedElementStackNavigator/build/v4` import
 - `sharedElements` function replaces `navigation/otherNavigation` by `route/otherRoute` arguments
 - See migration guide in `./docs/Migration.md` for upgrading instructions
 
@@ -66,47 +64,16 @@
 
 ## [2.0.1](https://github.com/IjzerenHein/react-navigation-shared-element/compare/v2.0.0...v2.0.1) (2020-02-09)
 
-* Add support for react-navigation-stack@2
 * Add support for nested navigators
 
 ### BREAKING CHANGES
 
 * The `createSharedElementStackNavigator` function has changed. It no longer takes the `createStackNavigator` function as an input.
 
-Previous (v1):
-
-```js
-import { createSharedElementStackNavigator } from 'react-navigation-shared-element';
-import { createStackNavigator } from 'react-navigation-stack';
-
-const stackNav = createSharedElementStackNavigator(
-  createStackNavigator,
-  {
-    Main: MainScreen,
-    ...
-  },
-  {...}
-);
-```
-
-Now (v2):
-
-```js
-import { createSharedElementStackNavigator } from 'react-navigation-shared-element';
-
-const stackNav = createSharedElementStackNavigator(
-  {
-    Main: MainScreen,
-    ...
-  },
-  {...}
-);
-```
-
 
 # [1.0.0](https://github.com/IjzerenHein/react-navigation-shared-element/compare/v0.5.0...v1.0.0) (2020-01-26)
 
-- update major version to `1` to correspond to `react-navigation-stack@1`
+- update major version to `1`
 
 ### Bug Fixes
 

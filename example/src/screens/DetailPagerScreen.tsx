@@ -3,16 +3,23 @@ import { StyleSheet, View } from "react-native";
 import PagerView, {
   PagerViewOnPageSelectedEvent,
 } from "react-native-pager-view";
+import { ParamListBase, RouteProp } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import { SharedElementsComponentConfig } from "react-navigation-shared-element";
-import { NavigationStackProp } from "react-navigation-stack";
 
 import { Item, items } from "../data";
 import { DetailComponent } from "./DetailComponent";
 import { getDetailSharedElements } from "./getDetailSharedElements";
 
+type ItemRouteParams = {
+  item?: Item;
+};
+
+type ItemParamList = Record<string, ItemRouteParams | undefined>;
+
 type Props = {
-  navigation: NavigationStackProp<any>;
-  route: any;
+  navigation: StackNavigationProp<ParamListBase>;
+  route: RouteProp<ItemParamList, string>;
 };
 
 export class DetailPagerScreen extends React.Component<Props> {
@@ -21,9 +28,9 @@ export class DetailPagerScreen extends React.Component<Props> {
 
   render() {
     const { navigation, route } = this.props;
-    const params = route?.params || navigation?.state?.params;
-    const initialItem: Item = params?.item;
-    const initialIndex = items.indexOf(initialItem);
+    const params = route?.params;
+    const initialItem = params?.item;
+    const initialIndex = initialItem ? items.indexOf(initialItem) : 0;
     return (
       <PagerView
         style={styles.container}

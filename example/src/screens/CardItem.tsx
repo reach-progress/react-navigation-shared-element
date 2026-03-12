@@ -1,13 +1,14 @@
 import * as React from "react";
 import { View, StyleSheet, Text, Image, Platform } from "react-native";
+import { ParamListBase } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import { SharedElement } from "react-navigation-shared-element";
-import { NavigationStackProp } from "react-navigation-stack";
 
 import { TouchableScale } from "../components";
 import { Item } from "../data";
 
 type Props = {
-  navigation: NavigationStackProp<any>; // v4
+  navigation: StackNavigationProp<ParamListBase>;
   routeName: string;
   item: Item;
 };

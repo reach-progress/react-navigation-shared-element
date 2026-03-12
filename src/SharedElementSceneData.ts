@@ -1,7 +1,6 @@
 import {
   SharedElementNode,
   SharedElementEventSubscription,
-  SharedElementAnimatedValue,
   SharedElementRoute,
   SharedElementSceneComponent,
   SharedElementsComponentConfig,
@@ -18,11 +17,6 @@ export type SharedElementSceneUpdateHandler = (
   id: string
 ) => any;
 
-const INVERT_OPTIONS = {
-  inputRange: [0, 1],
-  outputRange: [1, 0],
-};
-
 export type SharedElementSceneEventType =
   | "willFocus"
   | "didFocus"
@@ -35,7 +29,6 @@ export default class SharedElementSceneData {
   private nodes: {
     [key: string]: SharedElementNode;
   } = {};
-  private animationContextValue: any;
   public readonly getSharedElements: () => SharedElementsComponentConfig | void;
   public readonly name: string;
   public readonly navigatorId: string;
@@ -73,17 +66,6 @@ export default class SharedElementSceneData {
     this.route = route;
   }
 
-  setAnimimationContextValue(value: any) {
-    this.animationContextValue = value;
-  }
-
-  getAnimValue(closing: boolean): SharedElementAnimatedValue | undefined {
-    const { animationContextValue } = this;
-    if (!animationContextValue) return;
-    const { progress } = animationContextValue.current;
-    return closing ? progress.interpolate(INVERT_OPTIONS) : progress;
-  }
-
   getAncestor(): SharedElementNode | undefined {
     return this.ancestorNode;
   }
@@ -92,18 +74,33 @@ export default class SharedElementSceneData {
     // console.log('SharedElementSceneData.setAncestor');
     if (this.ancestorNode === ancestorNode) return;
     this.ancestorNode = ancestorNode || undefined;
+    if (this.debug) {
+      console.debug(
+        `[${this.navigatorId}]setAncestor scene="${this.name}"`
+      );
+    }
     this.emitUpdateEvent("ancestor", this.ancestorNode, "");
   }
 
   addNode(id: string, node: SharedElementNode): void {
     // console.log('SharedElementSceneData.addNode: ', id);
     this.nodes[id] = node;
+    if (this.debug) {
+      console.debug(
+        `[${this.navigatorId}]addNode scene="${this.name}" id="${id}"`
+      );
+    }
     this.emitUpdateEvent("add", node, id);
   }
 
   removeNode(id: string, node: SharedElementNode): void {
     // console.log('SharedElementSceneData.removeNode: ', id);
     delete this.nodes[id];
+    if (this.debug) {
+      console.debug(
+        `[${this.navigatorId}]removeNode scene="${this.name}" id="${id}"`
+      );
+    }
     this.emitUpdateEvent("remove", node, id);
   }
 

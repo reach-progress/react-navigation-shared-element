@@ -11,7 +11,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "./Colors";
 import { Icon } from "./Icon";
-import { SegmentControl, Segment } from "./Segment";
 
 type Props = {
   children: any;
@@ -20,7 +19,6 @@ type Props = {
 export const Tests = (props: Props) => {
   const insets = useSafeAreaInsets();
   const [test, setTest] = React.useState<any>(undefined);
-  const [v4, setV4] = React.useState(false);
 
   return (
     <View style={styles.container}>
@@ -29,25 +27,16 @@ export const Tests = (props: Props) => {
         backgroundColor="transparent"
         barStyle={test ? "dark-content" : "light-content"}
       />
-      {test && (v4 ? <test.props.ComponentV4 /> : <test.props.Component />)}
+      {test && <test.props.Component />}
       {!test && (
         <View style={[styles.header, { paddingTop: insets.top }]}>
           <Text style={styles.title}>react-navigation-shared-element</Text>
-          <SegmentControl
-            style={styles.segments}
-            selectedIndex={v4 ? 0 : 1}
-            onValueChange={(index) => setV4(index === 0)}
-          >
-            <Segment label="Navigation 4" />
-            <Segment label="Navigation 5/6" />
-          </SegmentControl>
         </View>
       )}
       {!test && (
         <ScrollView style={styles.content}>
           {React.Children.map(props.children, (test) =>
             React.cloneElement(test, {
-              v4,
               onPress: (Component: React.ComponentType<any>) => setTest(test),
             })
           )}
@@ -66,7 +55,7 @@ export const Tests = (props: Props) => {
           disabled={!test}
           onPress={() => setTest(undefined)}
         >
-          <Icon style={styles.backIcon} name="ios-home" />
+          <Icon style={styles.backIcon} name="home" />
         </TouchableOpacity>
       </View>
     </View>
@@ -108,9 +97,5 @@ const styles = StyleSheet.create({
   backIcon: {
     color: "white",
     fontSize: 20,
-  },
-  segments: {
-    marginTop: 10,
-    marginHorizontal: 20,
   },
 });

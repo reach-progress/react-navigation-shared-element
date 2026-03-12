@@ -89,6 +89,7 @@ function createSharedElementScene(
       rendererData.nestingDepth,
       verbose
     );
+    private lastTransitionClosing: boolean | undefined;
 
     static readonly config = config;
 
@@ -109,25 +110,42 @@ function createSharedElementScene(
     }
 
     private onTransitionStart = (event: any) => {
-      const closing: boolean = event.data.closing;
+      const closing = Boolean(event?.data?.closing);
+      this.lastTransitionClosing = closing;
+      if (verbose) {
+        console.debug("[SE] onTransitionStart", {
+          closing,
+          route: this.props.route?.name,
+        });
+      }
       rendererData.startTransition(
         closing,
         navigatorId,
         rendererData.nestingDepth
       );
-      //rendererData.updateSceneState(this.sceneData, "willFocus");
+      rendererData.updateSceneState(
+        this.sceneData,
+        closing ? "willBlur" : "willFocus"
+      );
     };
 
-    private onTransitionEnd = ({ data: { closing } }: any) => {
+    private onTransitionEnd = (event: any) => {
+      const closingFromEvent = event?.data?.closing;
+      const closing =
+        typeof closingFromEvent === "boolean"
+          ? closingFromEvent
+          : this.lastTransitionClosing;
       rendererData.endTransition(
         closing,
         navigatorId,
         rendererData.nestingDepth
       );
+      this.lastTransitionClosing = undefined;
     };
 
     componentWillUnmount() {
       Object.values(this.subscriptions).forEach((unsubscribe) => unsubscribe());
+      rendererData.removeScene(this.sceneData);
     }
 
     render() {
@@ -139,21 +157,11 @@ function createSharedElementScene(
             collapsable={false}
             ref={this.onSetRef}
           >
-            <AnimationContext.Consumer>
-              {this.onRenderAnimationContext}
-            </AnimationContext.Consumer>
             <Component {...this.props} />
           </View>
         </SharedElementSceneContext.Provider>
       );
     }
-
-    private onRenderAnimationContext = (
-      value: StackCardInterpolationProps | undefined
-    ) => {
-      this.sceneData.setAnimimationContextValue(value);
-      return null;
-    };
 
     componentDidUpdate() {
       this.sceneData.updateRoute(this.props.route);
@@ -163,27 +171,46 @@ function createSharedElementScene(
       this.sceneData.setAncestor(nodeFromRef(ref));
     };
 
-    private onWillFocus = () => {
+    private onWillFocus = (key?: string) => {
       const { navigation, route } = this.props;
-
-      //console.log("onWillFocus: ", route);
-      if (isActiveRoute(navigation, route)) {
-        this.sceneData.updateRoute(route);
-        rendererData.updateSceneState(this.sceneData, "willFocus");
-        InteractionManager.runAfterInteractions(() => {
-          //console.log("onDidFocus: ", this.props.route);
-          this.sceneData.updateRoute(this.props.route);
-          rendererData.updateSceneState(this.sceneData, "didFocus");
+      if (verbose) {
+        console.debug("[SE] onWillFocus", {
+          route: route?.name,
+          isTransitionStarted: (rendererData as any).isTransitionStarted,
         });
       }
+
+      if (key && key !== route.key) {
+        return;
+      }
+
+      // Focus events are keyed and can arrive just before the navigation state
+      // reports the new active route. Trust the key when present to avoid
+      // missing close transitions (especially on iOS tab stacks).
+      const isFocusedRoute = key ? key === route.key : isActiveRoute(navigation, route);
+      if (!isFocusedRoute) {
+        return;
+      }
+
+      this.sceneData.updateRoute(route);
+      rendererData.updateSceneState(this.sceneData, "willFocus");
+      InteractionManager.runAfterInteractions(() => {
+        //console.log("onDidFocus: ", this.props.route);
+        this.sceneData.updateRoute(this.props.route);
+        rendererData.updateSceneState(this.sceneData, "didFocus");
+      });
     };
 
-    private onWillBlur = () => {
+    private onWillBlur = (key?: string) => {
       const { route } = this.props;
+
+      if (key && key !== route.key) {
+        return;
+      }
 
       //console.log("onWillBlur: ", route);
       this.sceneData.updateRoute(route);
-      //rendererData.updateSceneState(this.sceneData, "willBlur");
+      rendererData.updateSceneState(this.sceneData, "willBlur");
     };
   }
 

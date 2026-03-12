@@ -1,14 +1,15 @@
 import { LinearGradient } from "expo-linear-gradient";
 import * as React from "react";
 import { View, StyleSheet, Text, Image, TouchableOpacity } from "react-native";
+import { ParamListBase } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import { SharedElement } from "react-navigation-shared-element";
-import { NavigationStackProp } from "react-navigation-stack";
 
 import { Icon } from "../components";
 import { Item } from "../data";
 
 type Props = {
-  navigation: NavigationStackProp<any>;
+  navigation: StackNavigationProp<ParamListBase>;
   item: Item;
   modal: "none" | "full" | "sheet";
 };
@@ -60,7 +61,7 @@ export const DetailComponent = (props: Props) => {
             onPress={() => navigation.goBack()}
           >
             <SharedElement id="close">
-              <Icon style={styles.icon} name="ios-close" />
+              <Icon style={styles.icon} name="close" />
             </SharedElement>
           </TouchableOpacity>
         </View>

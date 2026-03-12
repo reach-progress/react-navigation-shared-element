@@ -5,7 +5,6 @@ import SharedElementSceneData, {
 import {
   SharedElementEventSubscription,
   SharedElementsStrictConfig,
-  SharedElementAnimatedValue,
   SharedElementTransitionProps,
   SharedElementRoute,
 } from "./types";
@@ -20,7 +19,7 @@ export interface ISharedElementRendererData {
     nestingDepth: number
   ): void;
   endTransition(
-    closing: boolean,
+    closing: boolean | undefined,
     navigatorId: string,
     nestingDepth: number
   ): void;
@@ -28,6 +27,9 @@ export interface ISharedElementRendererData {
     scene: SharedElementSceneData,
     eventType: SharedElementSceneEventType
   ): void;
+  removeScene(scene: SharedElementSceneData): void;
+  primeClosingTransitionsPreview(): SharedElementTransitionProps[];
+  clearClosingTransitionsPreview(): void;
   readonly nestingDepth: number;
   addDebugRef(): number;
   releaseDebugRef(): number;
@@ -64,6 +66,19 @@ type SceneRoute = {
 export default class SharedElementRendererData
   implements ISharedElementRendererData
 {
+  private nativeDriver: boolean;
+  private nativeDuration?: number;
+  private nativeDelay?: number;
+
+  constructor(options?: {
+    nativeDuration?: number;
+    nativeDelay?: number;
+  }) {
+    this.nativeDriver = true;
+    this.nativeDuration = options?.nativeDuration;
+    this.nativeDelay = options?.nativeDelay;
+  }
+
   private scenes: SceneRoute[] = [];
   private updateSubscribers = new Set<SharedElementRendererUpdateHandler>();
   private sharedElements: SharedElementsStrictConfig | null = null;
@@ -71,16 +86,17 @@ export default class SharedElementRendererData
 
   private route: SharedElementRoute | null = null;
   private prevRoute: SharedElementRoute | null = null;
-  private routeAnimValue: SharedElementAnimatedValue;
 
   private scene: SharedElementSceneData | null = null;
   private prevScene: SharedElementSceneData | null = null;
-  private sceneAnimValue: SharedElementAnimatedValue;
 
   private isTransitionStarted: boolean = false;
   private isTransitionClosing: boolean = false;
   private transitionNavigatorId: string = "";
   private transitionNestingDepth: number = -1;
+  private closePreviewPrevRouteKeyByRouteKey = new Map<string, string>();
+  private closeSyncPreviewTransitions: SharedElementTransitionProps[] | null =
+    null;
 
   public debugRefCount: number = 0;
 
@@ -90,26 +106,53 @@ export default class SharedElementRendererData
         `[${navigatorId}]startTransition, closing: ${closing}, nestingDepth: ${nestingDepth}`
       );
 
-    if (!this.isTransitionStarted || this.route) {
+    // If the user re-opens a shared-element route before the prior close
+    // transition has fully ended, ensure we transition from the current
+    // visible route instead of stale close state.
+    if (this.isTransitionStarted && this.isTransitionClosing && !closing) {
       this.prevRoute = this.route;
-      this.route = null;
-      this.routeAnimValue = null;
+      this.clearClosingTransitionsPreview();
+      if (this.debug) {
+        console.debug(`[${navigatorId}]startTransition reopening-while-closing`, {
+          route: this.route?.name,
+          prevRoute: this.prevRoute?.name,
+          nestingDepth,
+        });
+      }
+    }
 
-      // When a transition wasn't completely fully, but a new transition
-      // has already started, then the `willBlur` event is not called.
-      // For this particular case, we capture the animation-value of the
-      // last (previous) scene that is now being hidden.
-      if (this.isTransitionStarted) {
-        const scene = this.getScene(this.prevRoute);
-        if (scene) {
-          this.routeAnimValue = scene.getAnimValue(true);
-        }
+    if (!this.isTransitionStarted || this.route) {
+      if (
+        !this.prevRoute ||
+        (this.route && this.prevRoute.key === this.route.key)
+      ) {
+        this.prevRoute = this.route;
+      }
+
+      const hasRoutePair =
+        this.route &&
+        this.prevRoute &&
+        this.prevRoute.key !== this.route.key;
+      if (!hasRoutePair) {
+        this.route = null;
       }
 
       this.isTransitionStarted = true;
       this.isTransitionClosing = closing;
+      if (!closing) {
+        this.clearClosingTransitionsPreview();
+      }
       this.transitionNavigatorId = navigatorId;
       this.transitionNestingDepth = nestingDepth;
+      if (this.debug) {
+        console.debug(`[${navigatorId}]transitionState`, {
+          route: this.route?.name,
+          prevRoute: this.prevRoute?.name,
+          closing,
+          nestingDepth,
+        });
+      }
+
     } else {
       // When navigators are nested, `startTransition` may be called multiple
       // times. In such as case, we want to use the most shallow navigator,
@@ -121,24 +164,37 @@ export default class SharedElementRendererData
     }
   }
 
-  endTransition(closing: boolean, navigatorId: string, nestingDepth: number) {
+  endTransition(
+    closingInput: boolean | undefined,
+    navigatorId: string,
+    nestingDepth: number
+  ) {
+    const closing =
+      typeof closingInput === "boolean" ? closingInput : this.isTransitionClosing;
     if (this.debug)
       console.debug(
-        `[${navigatorId}]endTransition, closing: ${closing}, nestingDepth: ${nestingDepth}`
+        `[${navigatorId}]endTransition, closing: ${closing}, nestingDepth: ${nestingDepth}`,
+        {
+          closingInput,
+          transitionClosing: this.isTransitionClosing,
+        }
       );
 
     if (
       !this.isTransitionStarted ||
-      this.transitionNavigatorId !== navigatorId
+      this.transitionNavigatorId !== navigatorId ||
+      this.isTransitionClosing !== closing
     ) {
       return;
     }
 
     this.isTransitionStarted = false;
+    if (closing) {
+      this.clearClosingTransitionsPreview();
+    }
 
     if (this.prevRoute != null) {
       this.prevRoute = null;
-      this.routeAnimValue = null;
       this.updateSceneListeners();
       this.updateSharedElements();
     }
@@ -153,9 +209,58 @@ export default class SharedElementRendererData
         return this.willFocusScene(scene);
       case "didFocus":
         return this.didFocusScene(scene);
-      /*case "willBlur":
-        return this.willBlurScene(scene);*/
+      case "willBlur":
+        return this.willBlurScene(scene);
     }
+  }
+
+  removeScene(scene: SharedElementSceneData): void {
+    const routeKey = scene.route.key;
+    this.scenes = this.scenes.filter((sceneRoute) => {
+      const match =
+        sceneRoute.scene === scene || sceneRoute.scene.route.key === routeKey;
+      if (!match) return true;
+      sceneRoute.subscription?.();
+      return false;
+    });
+
+    if (this.route?.key === routeKey) {
+      this.route = null;
+    }
+    if (this.prevRoute?.key === routeKey) {
+      this.prevRoute = null;
+    }
+    if (this.scene?.route.key === routeKey) {
+      this.scene = null;
+    }
+    if (this.prevScene?.route.key === routeKey) {
+      this.prevScene = null;
+    }
+
+    for (const [key, value] of this.closePreviewPrevRouteKeyByRouteKey) {
+      if (key === routeKey || value === routeKey) {
+        this.closePreviewPrevRouteKeyByRouteKey.delete(key);
+      }
+    }
+
+    // If routes were unmounted during an in-flight transition and no route
+    // pair remains, clear transition state so future transitions can start.
+    if (this.isTransitionStarted && !this.route && !this.prevRoute) {
+      if (this.debug) {
+        console.debug("[RNSE] removeScene reset transition state", {
+          routeKey,
+          navigatorId: scene.navigatorId,
+        });
+      }
+      this.isTransitionStarted = false;
+      this.isTransitionClosing = false;
+      this.transitionNavigatorId = "";
+      this.transitionNestingDepth = -1;
+      this.clearClosingTransitionsPreview();
+    }
+
+    this.updateSceneListeners();
+    this.updateSharedElements();
   }
 
   addDebugRef(): number {
@@ -177,22 +282,6 @@ export default class SharedElementRendererData
       );
     this.registerScene(scene);
 
-    // Wait for a transition start, before starting any animations
-    if (!this.isTransitionStarted) return;
-
-    // Use the animation value from the navigator that
-    // started the transition
-    if (this.prevRoute) {
-      const routeScene = this.isTransitionClosing
-        ? this.getScene(this.prevRoute)
-        : scene;
-      if (routeScene?.navigatorId === this.transitionNavigatorId) {
-        this.routeAnimValue = routeScene?.getAnimValue(
-          this.isTransitionClosing
-        );
-      }
-    }
-
     // In case of nested navigators, multiple scenes will become
     // activated. Make sure to use the scene that is nested most deeply,
     // as this will be the one visible to the user
@@ -205,8 +294,18 @@ export default class SharedElementRendererData
       }
     }
 
+    // Wait for a transition start, before starting any animations
+    if (!this.isTransitionStarted) return;
+
     // Update transition
-    if (this.prevRoute && this.route && this.routeAnimValue) {
+    if (this.prevRoute && this.route && this.nativeDriver) {
+      if (this.debug) {
+        console.debug(`[${scene.navigatorId}]willFocus->update`, {
+          route: this.route?.name,
+          prevRoute: this.prevRoute?.name,
+          closing: this.isTransitionClosing,
+        });
+      }
       this.updateSceneListeners();
       this.updateSharedElements();
     }
@@ -229,37 +328,55 @@ export default class SharedElementRendererData
     this.registerScene(scene);
   }
 
-  /*willBlurScene(scene: SharedElementSceneData): void {
+  willBlurScene(scene: SharedElementSceneData): void {
     if (this.debug)
       console.debug(
         `[${scene.navigatorId}]willBlur, scene: "${scene.name}", depth: ${scene.nestingDepth}`
       );
 
+    // Capture the previous route before focus changes overwrite it.
+    if (!this.isTransitionStarted) {
+      if (!this.prevRoute || this.prevRoute.key === scene.route.key) {
+        this.prevRoute = scene.route;
+      }
+    }
+
     // Wait for a transition start, before starting any animations
     if (!this.isTransitionStarted) return;
 
-    // Use the animation value from the navigator that
-    // started the transition
-    if (
-      this.isTransitionClosing &&
-      scene.navigatorId === this.transitionNavigatorId &&
-      !this.routeAnimValue
-    ) {
-      this.routeAnimValue = scene.getAnimValue(this.isTransitionClosing);
-    }
-
     // Update transition
-    if (this.prevRoute && this.route && this.routeAnimValue) {
+    if (this.prevRoute && this.route && this.nativeDriver) {
+      if (this.debug) {
+        console.debug(`[${scene.navigatorId}]willBlur->update`, {
+          route: this.route?.name,
+          prevRoute: this.prevRoute?.name,
+          closing: this.isTransitionClosing,
+        });
+      }
       this.updateSceneListeners();
       this.updateSharedElements();
     }
-  }*/
+  }
 
   private registerScene(scene: SharedElementSceneData) {
-    this.scenes.push({
-      scene,
-      subscription: null,
-    });
+    const existingIndex = this.scenes.findIndex(
+      (sceneRoute) => sceneRoute.scene.route.key === scene.route.key
+    );
+    if (existingIndex >= 0) {
+      const existing = this.scenes[existingIndex];
+      if (existing.scene !== scene) {
+        existing.subscription?.();
+        existing.subscription = null;
+        existing.scene = scene;
+      }
+      this.scenes.splice(existingIndex, 1);
+      this.scenes.push(existing);
+    } else {
+      this.scenes.push({
+        scene,
+        subscription: null,
+      });
+    }
     if (this.scenes.length > 10) {
       const { subscription } = this.scenes[0];
       this.scenes.splice(0, 1);
@@ -296,26 +413,29 @@ export default class SharedElementRendererData
   }
 
   private updateSharedElements() {
-    const { route, prevRoute, routeAnimValue } = this;
+    const { route, prevRoute } = this;
     const scene = this.getScene(route);
     const prevScene = this.getScene(prevRoute);
-    const sceneAnimValue = routeAnimValue;
+    if (this.debug) {
+      console.debug("[SE] updateSharedElements", {
+        hasRouteAnim: false,
+        route: route?.name,
+        prevRoute: prevRoute?.name,
+        hasScene: !!scene,
+        hasPrevScene: !!prevScene,
+      });
+    }
 
     // Update current scene & previous scene
-    if (
-      scene === this.scene &&
-      prevScene === this.prevScene &&
-      sceneAnimValue === this.sceneAnimValue
-    )
+    if (scene === this.scene && prevScene === this.prevScene)
       return;
     this.scene = scene;
     this.prevScene = prevScene;
-    this.sceneAnimValue = sceneAnimValue;
 
     // Update shared elements
     let sharedElements: SharedElementsStrictConfig | null = null;
     let isShowing = true;
-    if (sceneAnimValue && scene && prevScene && route && prevRoute) {
+    if (this.nativeDriver && scene && prevScene && route && prevRoute) {
       sharedElements = getSharedElements(scene, prevScene, true);
       if (!sharedElements) {
         isShowing = false;
@@ -336,6 +456,12 @@ export default class SharedElementRendererData
       }
       this.sharedElements = sharedElements;
       this.isShowing = isShowing;
+      if (sharedElements && scene && prevScene) {
+        this.closePreviewPrevRouteKeyByRouteKey.set(
+          scene.route.key,
+          prevScene.route.key
+        );
+      }
       /*console.log(
         'updateSharedElements: ',
         sharedElements,
@@ -359,28 +485,150 @@ export default class SharedElementRendererData
     this.updateSubscribers.forEach((handler) => handler());
   }
 
-  getTransitions(): SharedElementTransitionProps[] {
-    const { sharedElements, prevScene, scene, isShowing, sceneAnimValue } =
-      this;
-
-    if (!sharedElements || !scene || !prevScene) return NO_SHARED_ELEMENTS;
+  private buildTransitions(
+    sharedElements: SharedElementsStrictConfig,
+    prevScene: SharedElementSceneData,
+    scene: SharedElementSceneData,
+    isShowing: boolean,
+    closing: boolean
+  ): SharedElementTransitionProps[] {
     return sharedElements.map(({ id, otherId, ...other }) => {
       const startId = isShowing ? otherId || id : id;
       const endId = isShowing ? id : otherId || id;
+      const startNode = (prevScene ? prevScene.getNode(startId) : undefined);
+      const endNode = (scene ? scene.getNode(endId) : undefined);
+      if (this.debug && (!startNode || !endNode)) {
+        console.debug(
+          `[${scene.navigatorId}]missing nodes for transition "${prevScene.name}" -> "${scene.name}"`,
+          {
+            startId,
+            endId,
+            hasStart: !!startNode,
+            hasEnd: !!endNode,
+            isShowing,
+          }
+        );
+      }
+      const nativeFrom = closing ? (isShowing ? 1 : 0) : 0;
+      const nativeTo = closing ? (isShowing ? 0 : 1) : 1;
       return {
         key: scene.route.key,
-        position: sceneAnimValue,
         start: {
           ancestor: (prevScene ? prevScene.getAncestor() : undefined) || null,
-          node: (prevScene ? prevScene.getNode(startId) : undefined) || null,
+          node: startNode || null,
         },
         end: {
           ancestor: (scene ? scene.getAncestor() : undefined) || null,
-          node: (scene ? scene.getNode(endId) : undefined) || null,
+          node: endNode || null,
         },
+        ...(this.nativeDriver
+          ? {
+              nativeDriver: true,
+              nativeDuration: this.nativeDuration ?? 300,
+              nativeDelay: this.nativeDelay,
+              nativeFrom,
+              nativeTo,
+            }
+          : null),
         ...other,
       };
     });
+  }
+
+  getTransitions(): SharedElementTransitionProps[] {
+    const { sharedElements, prevScene, scene, isShowing } = this;
+
+    if (!sharedElements || !scene || !prevScene) {
+      return this.closeSyncPreviewTransitions || NO_SHARED_ELEMENTS;
+    }
+    return this.buildTransitions(
+      sharedElements,
+      prevScene,
+      scene,
+      isShowing,
+      this.isTransitionClosing
+    );
+  }
+
+  private computeClosingTransitionsPreview(): SharedElementTransitionProps[] {
+    if (!this.nativeDriver || !this.route) return NO_SHARED_ELEMENTS;
+    const currentScene = this.getScene(this.route);
+    if (!currentScene) return NO_SHARED_ELEMENTS;
+
+    const mappedPrevRouteKey =
+      this.closePreviewPrevRouteKeyByRouteKey.get(currentScene.route.key);
+    let destinationScene: SharedElementSceneData | null = mappedPrevRouteKey
+      ? this.getScene({ key: mappedPrevRouteKey } as SharedElementRoute)
+      : null;
+
+    // Find the most recently registered sibling scene in the same navigator,
+    // which should correspond to the destination for a close/goBack action.
+    if (!destinationScene) {
+      for (let i = this.scenes.length - 1; i >= 0; i--) {
+        const candidate = this.scenes[i].scene;
+        if (candidate.route.key === currentScene.route.key) continue;
+        if (candidate.navigatorId !== currentScene.navigatorId) continue;
+        if (candidate.nestingDepth !== currentScene.nestingDepth) continue;
+        destinationScene = candidate;
+        break;
+      }
+    }
+    if (!destinationScene) {
+      return NO_SHARED_ELEMENTS;
+    }
+
+    // Build the preview using the same direction as the real close transition:
+    // start=current screen, end=destination screen.
+    let sharedElements = getSharedElements(
+      currentScene,
+      destinationScene,
+      false
+    );
+    let isShowing = false;
+    if (!sharedElements) {
+      sharedElements = getSharedElements(currentScene, destinationScene, true);
+    }
+    if (!sharedElements) {
+      isShowing = true;
+      sharedElements = getSharedElements(
+        destinationScene,
+        currentScene,
+        true
+      );
+    }
+    if (!sharedElements) {
+      return NO_SHARED_ELEMENTS;
+    }
+
+    return this.buildTransitions(
+      sharedElements,
+      currentScene,
+      destinationScene,
+      isShowing,
+      true
+    );
+  }
+
+  primeClosingTransitionsPreview(): SharedElementTransitionProps[] {
+    const transitions = this.computeClosingTransitionsPreview();
+    this.closeSyncPreviewTransitions = transitions.length
+      ? transitions.map((transition) => ({
+          ...transition,
+          nativeDriver: false,
+          nativeDuration: undefined,
+          nativeDelay: undefined,
+          nativeFrom: undefined,
+          nativeTo: undefined,
+        }))
+      : null;
+    this.emitUpdateEvent();
+    return transitions;
+  }
+
+  clearClosingTransitionsPreview(): void {
+    if (!this.closeSyncPreviewTransitions) return;
+    this.closeSyncPreviewTransitions = null;
+    this.emitUpdateEvent();
   }
 
   get nestingDepth(): number {

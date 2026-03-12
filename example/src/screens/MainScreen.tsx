@@ -1,14 +1,21 @@
 import * as React from "react";
 import { View, StyleSheet, Text, Image } from "react-native";
+import { ParamListBase, RouteProp } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import { SharedElement } from "react-navigation-shared-element";
-import { NavigationStackProp } from "react-navigation-stack";
 
 import { TouchableScale } from "../components";
 import { defaultItem, Item } from "../data";
 
+type ItemRouteParams = {
+  item?: Item;
+};
+
+type ItemParamList = Record<string, ItemRouteParams | undefined>;
+
 type Props = {
-  navigation: NavigationStackProp<any>; // v4
-  route: any; // v5
+  navigation: StackNavigationProp<ParamListBase>;
+  route: RouteProp<ItemParamList, string>;
   routeName: string;
 };
 
@@ -19,7 +26,7 @@ export class MainScreen extends React.Component<Props> {
 
   render() {
     const { navigation, route } = this.props;
-    const params = route?.params || navigation?.state?.params;
+    const params = route?.params;
     const item: Item = params?.item || defaultItem;
     return (
       <>

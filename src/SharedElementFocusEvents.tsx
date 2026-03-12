@@ -23,7 +23,7 @@ export function useSharedElementFocusEvents<
   emitter: EventEmitter;
 }) {
   const navigation = React.useContext(NavigationContext);
-  const lastFocusedKeyRef = React.useRef<string | undefined>();
+  const lastFocusedKeyRef = React.useRef<string | undefined>(undefined);
 
   const currentFocusedKey = state.routes[state.index].key;
 

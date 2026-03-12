@@ -1,9 +1,13 @@
-# LOOKING FOR A NEW HOME OR MAINTAINER
+# Reach Progress Fork <!-- omit in toc -->
 
-Both [react-native-shared-element](https://github.com/IjzerenHein/react-native-shared-element) and [react-navigation-shared-element](https://github.com/IjzerenHein/react-navigation-shared-element) are looking for a new Home or Maintainer.
-It is no longer possible for me to maintain these repositories. Please reach out to [me personally](mailto:hrutjes@gmail.com) if you want to take over maintenance or have ideas or suggestions for a new home.
+This repository is a Reach Progress fork of [IjzerenHein/react-navigation-shared-element](https://github.com/IjzerenHein/react-navigation-shared-element). It has been updated to work with React Native's New Architecture together with the Reach Progress `react-native-shared-element` fork.
 
-> Read the [full statement here](https://github.com/IjzerenHein/react-navigation-shared-element/issues/14#issuecomment-1081601310).
+Major changes in this fork:
+
+- Updated the package for current React Navigation, React Native, and Expo module tooling.
+- Removed the legacy React Navigation 4 implementation and related docs/example cases.
+- Fixed shared-element renderer lifecycle handling for reopen, unmount, and nested/tab navigation edge cases under the new architecture.
+- Refreshed the example app for the current Expo-generated native project structure.
 
 # React Navigation Shared Element <!-- omit in toc -->
 
@@ -15,18 +19,15 @@ React Navigation bindings for [react-native-shared-element](https://github.com/I
 ## Documentation
 
 - [Shared element for the React Navigation 5/6 API](./docs/API.md)
-- [Shared element for the React Navigation 4 API](./docs/Navigation4.md)
 - [Migration guide](./docs/Migration.md)
 
 ## Compatibility <!-- omit in toc -->
 
-The following versions or react-navigation and the stack navigator are supported.
+The following versions of React Navigation and the stack navigator are supported.
 
-| Version                                                                       | React-Navigation | Comments                                                                                                                                                              |
-| ----------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3.x                                                                           | 4, 5 & 6             | Import from `react-navigation-shared-element/build/v4` to use it with 4.x. |
-| [2.x](https://github.com/IjzerenHein/react-navigation-shared-element/tree/v2) | 3 & 4            | This version is compatible with `react-navigation-stack@2`.                                                                                                           |
-| [1.x](https://github.com/IjzerenHein/react-navigation-shared-element/tree/v1) | 3 & 4            | This version is compatible with `react-navigation-stack@1`.                                                                                                           |
+| Version | React-Navigation |
+| ------- | ---------------- |
+| 3.x     | 5 & 6            |
 
 ## Things to know
 
@@ -41,7 +42,6 @@ The following versions or react-navigation and the stack navigator are supported
 ## Videos
 
 - [Snapchat Shared Transitions - “Can it be done in React Native?” (with react-navigation v5)](https://www.youtube.com/watch?v=NJZfRXs7nZs)
-- [Airbnb Shared Transition - “Can it be done in React Native?” (with react-navigation v4)](https://www.youtube.com/watch?v=83GNiMp-qq0)
 
 ## Sponsors
 

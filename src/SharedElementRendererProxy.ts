@@ -2,6 +2,7 @@ import { ISharedElementRendererData } from "./SharedElementRendererData";
 import SharedElementSceneData, {
   SharedElementSceneEventType,
 } from "./SharedElementSceneData";
+import { SharedElementTransitionProps } from "./types";
 
 export class SharedElementRendererProxy implements ISharedElementRendererData {
   private data: ISharedElementRendererData | null = null;
@@ -16,7 +17,11 @@ export class SharedElementRendererProxy implements ISharedElementRendererData {
     return this.data.startTransition(closing, navigatorId, nestingDepth);
   }
 
-  endTransition(closing: boolean, navigatorId: string, nestingDepth: number) {
+  endTransition(
+    closing: boolean | undefined,
+    navigatorId: string,
+    nestingDepth: number
+  ) {
     if (!this.data) {
       console.warn(
         "SharedElementRendererProxy.endTransition called before Proxy was initialized"
@@ -37,6 +42,27 @@ export class SharedElementRendererProxy implements ISharedElementRendererData {
       return;
     }
     return this.data.updateSceneState(scene, eventType);
+  }
+
+  removeScene(scene: SharedElementSceneData): void {
+    if (!this.data) {
+      return;
+    }
+    this.data.removeScene(scene);
+  }
+
+  primeClosingTransitionsPreview(): SharedElementTransitionProps[] {
+    if (!this.data) {
+      return [];
+    }
+    return this.data.primeClosingTransitionsPreview();
+  }
+
+  clearClosingTransitionsPreview(): void {
+    if (!this.data) {
+      return;
+    }
+    this.data.clearClosingTransitionsPreview();
   }
 
   get source(): ISharedElementRendererData | null {

@@ -1,12 +1,13 @@
 import * as React from "react";
 import { StyleSheet, FlatList } from "react-native";
-import { NavigationStackProp } from "react-navigation-stack";
+import { ParamListBase } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 
 import { items, Item } from "../data";
 import { CardItem } from "./CardItem";
 
 type Props = {
-  navigation: NavigationStackProp<any>;
+  navigation: StackNavigationProp<ParamListBase>;
   routeName: string;
 };
 
