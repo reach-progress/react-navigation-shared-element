@@ -36,7 +36,13 @@ class SharedElement extends React.Component<SharedElementProps> {
             'The SharedElementSceneContext is not set, did you forget to wrap your scene component with `createSharedElementScene(..)`?'
           );*/
           this.sceneData = sceneData;
-          return <RawSharedElement {...otherProps} onNode={this.onSetNode} />;
+          return (
+            <RawSharedElement
+              {...otherProps}
+              debugName={id}
+              onNode={this.onSetNode}
+            />
+          );
         }}
       </SharedElementSceneContext.Consumer>
     );

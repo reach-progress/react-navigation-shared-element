@@ -511,8 +511,10 @@ export default class SharedElementRendererData
       }
       const nativeFrom = closing ? (isShowing ? 1 : 0) : 0;
       const nativeTo = closing ? (isShowing ? 0 : 1) : 1;
+      const debugName = `${prevScene.name}->${scene.name} ${startId}->${endId}`;
       return {
         key: scene.route.key,
+        debugName,
         start: {
           ancestor: (prevScene ? prevScene.getAncestor() : undefined) || null,
           node: startNode || null,
