@@ -94,6 +94,8 @@ export default class SharedElementRendererData
   private isTransitionClosing: boolean = false;
   private transitionNavigatorId: string = "";
   private transitionNestingDepth: number = -1;
+  private nativeTransitionGroupSequence: number = 0;
+  private nativeTransitionGroupId: string | null = null;
   private closePreviewPrevRouteKeyByRouteKey = new Map<string, string>();
   private closeSyncPreviewTransitions: SharedElementTransitionProps[] | null =
     null;
@@ -457,6 +459,13 @@ export default class SharedElementRendererData
       this.sharedElements = sharedElements;
       this.isShowing = isShowing;
       if (sharedElements && scene && prevScene) {
+        this.nativeTransitionGroupId = this.createNativeTransitionGroupId(
+          `${scene.route.key}:${prevScene.route.key}`
+        );
+      } else {
+        this.nativeTransitionGroupId = null;
+      }
+      if (sharedElements && scene && prevScene) {
         this.closePreviewPrevRouteKeyByRouteKey.set(
           scene.route.key,
           prevScene.route.key
@@ -485,12 +494,18 @@ export default class SharedElementRendererData
     this.updateSubscribers.forEach((handler) => handler());
   }
 
+  private createNativeTransitionGroupId(label: string): string {
+    this.nativeTransitionGroupSequence += 1;
+    return `${label}:${this.nativeTransitionGroupSequence}`;
+  }
+
   private buildTransitions(
     sharedElements: SharedElementsStrictConfig,
     prevScene: SharedElementSceneData,
     scene: SharedElementSceneData,
     isShowing: boolean,
-    closing: boolean
+    closing: boolean,
+    nativeGroupId: string | null
   ): SharedElementTransitionProps[] {
     return sharedElements.map(({ id, otherId, ...other }) => {
       const startId = isShowing ? otherId || id : id;
@@ -530,6 +545,10 @@ export default class SharedElementRendererData
               nativeDelay: this.nativeDelay,
               nativeFrom,
               nativeTo,
+              nativeGroup: nativeGroupId || undefined,
+              nativeGroupSize: nativeGroupId
+                ? sharedElements.length
+                : undefined,
             }
           : null),
         ...other,
@@ -548,7 +567,8 @@ export default class SharedElementRendererData
       prevScene,
       scene,
       isShowing,
-      this.isTransitionClosing
+      this.isTransitionClosing,
+      this.nativeTransitionGroupId
     );
   }
 
@@ -607,7 +627,10 @@ export default class SharedElementRendererData
       currentScene,
       destinationScene,
       isShowing,
-      true
+      true,
+      this.createNativeTransitionGroupId(
+        `preview:${currentScene.route.key}:${destinationScene.route.key}`
+      )
     );
   }
 
@@ -621,6 +644,8 @@ export default class SharedElementRendererData
           nativeDelay: undefined,
           nativeFrom: undefined,
           nativeTo: undefined,
+          nativeGroup: undefined,
+          nativeGroupSize: undefined,
         }))
       : null;
     this.emitUpdateEvent();
