@@ -65,6 +65,16 @@ export class SharedElementRendererProxy implements ISharedElementRendererData {
     this.data.clearClosingTransitionsPreview();
   }
 
+  prepareSceneSnapshots(
+    scene: SharedElementSceneData,
+    ids: string[]
+  ): Promise<void> {
+    if (!this.data) {
+      return Promise.resolve();
+    }
+    return this.data.prepareSceneSnapshots(scene, ids);
+  }
+
   get source(): ISharedElementRendererData | null {
     return this.data;
   }

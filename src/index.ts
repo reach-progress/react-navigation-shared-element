@@ -5,6 +5,7 @@ import {
 } from "react-native-shared-element";
 
 import SharedElementRendererContext from "./SharedElementRendererContext";
+import SharedElementSceneContext from "./SharedElementSceneContext";
 
 export * from "./types";
 
@@ -42,5 +43,17 @@ export function useSharedElementCloseSync() {
     [rendererData]
   );
 }
-export const __RNSE_BUILD_ID__ =
-  "rnse-nav-native-only-2026-02-26-close-sync-timeout-defaults-v5";
+
+/** Captures the selected source elements before press feedback can transform them. */
+export function useSharedElementPrePressSnapshot() {
+  const rendererData = React.useContext(SharedElementRendererContext);
+  const sceneData = React.useContext(SharedElementSceneContext);
+
+  return React.useCallback(
+    async (ids: string[]): Promise<void> => {
+      if (!rendererData || !sceneData) return;
+      await rendererData.prepareSceneSnapshots(sceneData, ids);
+    },
+    [rendererData, sceneData]
+  );
+}

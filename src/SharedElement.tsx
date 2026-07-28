@@ -37,11 +37,7 @@ class SharedElement extends React.Component<SharedElementProps> {
           );*/
           this.sceneData = sceneData;
           return (
-            <RawSharedElement
-              {...otherProps}
-              debugName={id}
-              onNode={this.onSetNode}
-            />
+            <RawSharedElement {...otherProps} onNode={this.onSetNode} />
           );
         }}
       </SharedElementSceneContext.Consumer>

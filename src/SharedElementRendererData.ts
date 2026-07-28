@@ -1,3 +1,9 @@
+import {
+  captureSharedElementSnapshots,
+  clearSharedElementSnapshots,
+  supportsSharedElementSnapshots,
+} from "react-native-shared-element";
+
 import { SharedElementCompatRouteProxy } from "./SharedElementCompatRouteProxy";
 import SharedElementSceneData, {
   SharedElementSceneEventType,
@@ -30,6 +36,10 @@ export interface ISharedElementRendererData {
   removeScene(scene: SharedElementSceneData): void;
   primeClosingTransitionsPreview(): SharedElementTransitionProps[];
   clearClosingTransitionsPreview(): void;
+  prepareSceneSnapshots(
+    scene: SharedElementSceneData,
+    ids: string[]
+  ): Promise<void>;
   readonly nestingDepth: number;
   addDebugRef(): number;
   releaseDebugRef(): number;
@@ -52,6 +62,8 @@ function getSharedElements(
 }
 
 const NO_SHARED_ELEMENTS: any[] = [];
+
+const getSnapshotKey = (routeKey: string, id: string) => `${routeKey}:${id}`;
 
 type SceneRoute = {
   scene: SharedElementSceneData;
@@ -97,6 +109,7 @@ export default class SharedElementRendererData
   private nativeTransitionGroupSequence: number = 0;
   private nativeTransitionGroupId: string | null = null;
   private closePreviewPrevRouteKeyByRouteKey = new Map<string, string>();
+  private capturedSnapshotRouteKeys = new Set<string>();
   private closeSyncPreviewTransitions: SharedElementTransitionProps[] | null =
     null;
 
@@ -193,6 +206,7 @@ export default class SharedElementRendererData
     this.isTransitionStarted = false;
     if (closing) {
       this.clearClosingTransitionsPreview();
+      this.clearCapturedSnapshots();
     }
 
     if (this.prevRoute != null) {
@@ -218,6 +232,7 @@ export default class SharedElementRendererData
 
   removeScene(scene: SharedElementSceneData): void {
     const routeKey = scene.route.key;
+    this.clearCapturedSnapshotsForRoute(routeKey);
     this.scenes = this.scenes.filter((sceneRoute) => {
       const match =
         sceneRoute.scene === scene || sceneRoute.scene.route.key === routeKey;
@@ -248,12 +263,6 @@ export default class SharedElementRendererData
     // If routes were unmounted during an in-flight transition and no route
     // pair remains, clear transition state so future transitions can start.
     if (this.isTransitionStarted && !this.route && !this.prevRoute) {
-      if (this.debug) {
-        console.debug("[RNSE] removeScene reset transition state", {
-          routeKey,
-          navigatorId: scene.navigatorId,
-        });
-      }
       this.isTransitionStarted = false;
       this.isTransitionClosing = false;
       this.transitionNavigatorId = "";
@@ -414,6 +423,81 @@ export default class SharedElementRendererData
     return sceneRoute ? sceneRoute.scene : null;
   }
 
+  private captureSceneSnapshots(scene: SharedElementSceneData): void {
+    if (!supportsSharedElementSnapshots()) return;
+    const elements = scene.getNodes().map(({ id, node }) => ({
+      key: getSnapshotKey(scene.route.key, id),
+      node,
+    }));
+    if (!elements.length) return;
+    this.capturedSnapshotRouteKeys.add(scene.route.key);
+    // A pressed element may already have an unscaled snapshot. Preserve it
+    // while filling the cache with the other visible elements on this route.
+    void captureSharedElementSnapshots(scene.route.key, elements, {
+      preserveExisting: true,
+    }).catch(() => undefined);
+  }
+
+  public async prepareSceneSnapshots(
+    scene: SharedElementSceneData,
+    ids: string[]
+  ): Promise<void> {
+    if (!supportsSharedElementSnapshots()) return;
+    const requestedIds = new Set(ids);
+    const elements = scene
+      .getNodes()
+      .filter(({ id }) => requestedIds.has(id))
+      .map(({ id, node }) => ({
+        key: getSnapshotKey(scene.route.key, id),
+        node,
+      }));
+    if (!elements.length) return;
+
+    try {
+      const result = await captureSharedElementSnapshots(
+        scene.route.key,
+        elements
+      );
+      if (result.captured > 0) {
+        this.capturedSnapshotRouteKeys.add(scene.route.key);
+      }
+    } catch {
+      // Snapshot capture is an enhancement; a failed capture should not block
+      // the press interaction or the transition's normal live-node fallback.
+    }
+  }
+
+  private clearCapturedSnapshotsForRoute(routeKey: string): void {
+    if (!this.capturedSnapshotRouteKeys.delete(routeKey)) return;
+    void clearSharedElementSnapshots(routeKey);
+  }
+
+  private clearCapturedSnapshots(): void {
+    for (const routeKey of this.capturedSnapshotRouteKeys) {
+      void clearSharedElementSnapshots(routeKey);
+    }
+    this.capturedSnapshotRouteKeys.clear();
+  }
+
+  private getSnapshotTarget(
+    endpointScene: SharedElementSceneData,
+    otherScene: SharedElementSceneData,
+    id: string,
+    closing: boolean
+  ): SharedElementTransitionProps["start"]["snapshot"] {
+    const sourceForEndpoint = this.closePreviewPrevRouteKeyByRouteKey.get(
+      otherScene.route.key
+    );
+    if (sourceForEndpoint !== endpointScene.route.key) return undefined;
+    if (!this.capturedSnapshotRouteKeys.has(endpointScene.route.key)) {
+      return undefined;
+    }
+    return {
+      key: getSnapshotKey(endpointScene.route.key, id),
+      mode: closing ? "require" : "prefer",
+    };
+  }
+
   private updateSharedElements() {
     const { route, prevRoute } = this;
     const scene = this.getScene(route);
@@ -465,11 +549,17 @@ export default class SharedElementRendererData
       } else {
         this.nativeTransitionGroupId = null;
       }
-      if (sharedElements && scene && prevScene) {
+      if (
+        sharedElements &&
+        scene &&
+        prevScene &&
+        !this.isTransitionClosing
+      ) {
         this.closePreviewPrevRouteKeyByRouteKey.set(
           scene.route.key,
           prevScene.route.key
         );
+        this.captureSceneSnapshots(prevScene);
       }
       /*console.log(
         'updateSharedElements: ',
@@ -512,6 +602,18 @@ export default class SharedElementRendererData
       const endId = isShowing ? id : otherId || id;
       const startNode = (prevScene ? prevScene.getNode(startId) : undefined);
       const endNode = (scene ? scene.getNode(endId) : undefined);
+      const startSnapshot = this.getSnapshotTarget(
+        prevScene,
+        scene,
+        startId,
+        closing
+      );
+      const endSnapshot = this.getSnapshotTarget(
+        scene,
+        prevScene,
+        endId,
+        closing
+      );
       if (this.debug && (!startNode || !endNode)) {
         console.debug(
           `[${scene.navigatorId}]missing nodes for transition "${prevScene.name}" -> "${scene.name}"`,
@@ -526,17 +628,17 @@ export default class SharedElementRendererData
       }
       const nativeFrom = closing ? (isShowing ? 1 : 0) : 0;
       const nativeTo = closing ? (isShowing ? 0 : 1) : 1;
-      const debugName = `${prevScene.name}->${scene.name} ${startId}->${endId}`;
       return {
         key: scene.route.key,
-        debugName,
         start: {
           ancestor: (prevScene ? prevScene.getAncestor() : undefined) || null,
           node: startNode || null,
+          snapshot: startSnapshot,
         },
         end: {
           ancestor: (scene ? scene.getAncestor() : undefined) || null,
           node: endNode || null,
+          snapshot: endSnapshot,
         },
         ...(this.nativeDriver
           ? {
@@ -549,6 +651,7 @@ export default class SharedElementRendererData
               nativeGroupSize: nativeGroupId
                 ? sharedElements.length
                 : undefined,
+              nativePreparing: false,
             }
           : null),
         ...other,
@@ -646,6 +749,9 @@ export default class SharedElementRendererData
           nativeTo: undefined,
           nativeGroup: undefined,
           nativeGroupSize: undefined,
+          // The preview only warms native measurements/content. Keeping it
+          // invisible avoids hiding part of the current screen before goBack.
+          nativePreparing: true,
         }))
       : null;
     this.emitUpdateEvent();

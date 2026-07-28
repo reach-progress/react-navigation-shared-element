@@ -27,7 +27,7 @@ export default class SharedElementSceneData {
   private updateSubscribers = new Set<SharedElementSceneUpdateHandler>();
   private ancestorNode?: SharedElementNode = undefined;
   private nodes: {
-    [key: string]: SharedElementNode;
+    [key: string]: SharedElementNode[];
   } = {};
   public readonly getSharedElements: () => SharedElementsComponentConfig | void;
   public readonly name: string;
@@ -84,7 +84,15 @@ export default class SharedElementSceneData {
 
   addNode(id: string, node: SharedElementNode): void {
     // console.log('SharedElementSceneData.addNode: ', id);
-    this.nodes[id] = node;
+    // Nested routes can stay mounted inside one outer scene and register the
+    // same ID. Keep both so removing the top route restores its source node.
+    const nodes = this.nodes[id] || [];
+    const existingIndex = nodes.indexOf(node);
+    if (existingIndex >= 0) {
+      nodes.splice(existingIndex, 1);
+    }
+    nodes.push(node);
+    this.nodes[id] = nodes;
     if (this.debug) {
       console.debug(
         `[${this.navigatorId}]addNode scene="${this.name}" id="${id}"`
@@ -95,7 +103,14 @@ export default class SharedElementSceneData {
 
   removeNode(id: string, node: SharedElementNode): void {
     // console.log('SharedElementSceneData.removeNode: ', id);
-    delete this.nodes[id];
+    const nodes = this.nodes[id];
+    if (!nodes) return;
+    const nodeIndex = nodes.indexOf(node);
+    if (nodeIndex < 0) return;
+    nodes.splice(nodeIndex, 1);
+    if (!nodes.length) {
+      delete this.nodes[id];
+    }
     if (this.debug) {
       console.debug(
         `[${this.navigatorId}]removeNode scene="${this.name}" id="${id}"`
@@ -105,7 +120,15 @@ export default class SharedElementSceneData {
   }
 
   getNode(id: string): SharedElementNode | undefined {
-    return this.nodes[id];
+    const nodes = this.nodes[id];
+    return nodes?.[nodes.length - 1];
+  }
+
+  getNodes(): Array<{ id: string; node: SharedElementNode }> {
+    return Object.entries(this.nodes).map(([id, nodes]) => ({
+      id,
+      node: nodes[nodes.length - 1],
+    }));
   }
 
   addUpdateListener(
