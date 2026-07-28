@@ -58,6 +58,13 @@ export class SharedElementRendererProxy implements ISharedElementRendererData {
     return this.data.primeClosingTransitionsPreview();
   }
 
+  activateClosingTransitionsPreview(): boolean {
+    if (!this.data) {
+      return false;
+    }
+    return this.data.activateClosingTransitionsPreview();
+  }
+
   clearClosingTransitionsPreview(): void {
     if (!this.data) {
       return;

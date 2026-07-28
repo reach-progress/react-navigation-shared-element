@@ -3,6 +3,7 @@ import {
   clearSharedElementSnapshots,
   supportsSharedElementSnapshots,
 } from "react-native-shared-element";
+import { Platform } from "react-native";
 
 import { SharedElementCompatRouteProxy } from "./SharedElementCompatRouteProxy";
 import SharedElementSceneData, {
@@ -35,6 +36,7 @@ export interface ISharedElementRendererData {
   ): void;
   removeScene(scene: SharedElementSceneData): void;
   primeClosingTransitionsPreview(): SharedElementTransitionProps[];
+  activateClosingTransitionsPreview(): boolean;
   clearClosingTransitionsPreview(): void;
   prepareSceneSnapshots(
     scene: SharedElementSceneData,
@@ -78,6 +80,7 @@ type SceneRoute = {
 export default class SharedElementRendererData
   implements ISharedElementRendererData
 {
+  private closingTransitionStarter?: () => void;
   private nativeDriver: boolean;
   private nativeDuration?: number;
   private nativeDelay?: number;
@@ -176,6 +179,10 @@ export default class SharedElementRendererData
         this.transitionNavigatorId = navigatorId;
         this.transitionNestingDepth = nestingDepth;
       }
+    }
+
+    if (closing && Platform.OS === "android") {
+      this.startClosingTransitionsPreview();
     }
   }
 
@@ -662,6 +669,15 @@ export default class SharedElementRendererData
   getTransitions(): SharedElementTransitionProps[] {
     const { sharedElements, prevScene, scene, isShowing } = this;
 
+    // The close probe is already measured before navigation starts. Reuse that
+    // native view until transitionEnd so the image animation stays aligned
+    // with the card instead of mounting after the card has finished.
+    if (
+      Platform.OS === "android" &&
+      this.closeSyncPreviewTransitions
+    ) {
+      return this.closeSyncPreviewTransitions;
+    }
     if (!sharedElements || !scene || !prevScene) {
       return this.closeSyncPreviewTransitions || NO_SHARED_ELEMENTS;
     }
@@ -740,22 +756,76 @@ export default class SharedElementRendererData
   primeClosingTransitionsPreview(): SharedElementTransitionProps[] {
     const transitions = this.computeClosingTransitionsPreview();
     this.closeSyncPreviewTransitions = transitions.length
-      ? transitions.map((transition) => ({
-          ...transition,
-          nativeDriver: false,
-          nativeDuration: undefined,
-          nativeDelay: undefined,
-          nativeFrom: undefined,
-          nativeTo: undefined,
-          nativeGroup: undefined,
-          nativeGroupSize: undefined,
-          // The preview only warms native measurements/content. Keeping it
-          // invisible avoids hiding part of the current screen before goBack.
-          nativePreparing: true,
-        }))
+      ? transitions.map((transition) => {
+          if (Platform.OS === "android") {
+            return {
+              ...transition,
+              nativeDriver: false,
+              // Android reuses this exact view for its close animation, so
+              // retain the native timing while measurements warm up invisibly.
+              nativePreparing: true,
+            };
+          }
+          return {
+            ...transition,
+            nativeDriver: false,
+            nativeDuration: undefined,
+            nativeDelay: undefined,
+            nativeFrom: undefined,
+            nativeTo: undefined,
+            nativeGroup: undefined,
+            nativeGroupSize: undefined,
+            nativePreparing: true,
+          };
+        })
       : null;
     this.emitUpdateEvent();
     return transitions;
+  }
+
+  activateClosingTransitionsPreview(): boolean {
+    if (Platform.OS !== "android") return false;
+    if (!this.closeSyncPreviewTransitions) return false;
+    const hasPreparingTransition = this.closeSyncPreviewTransitions.some(
+      (transition) => transition.nativePreparing
+    );
+    if (!hasPreparingTransition) return false;
+
+    this.closeSyncPreviewTransitions = this.closeSyncPreviewTransitions.map(
+      (transition) => ({
+        ...transition,
+        // Mount the measured overlay before navigation starts, but leave its
+        // driver paused so it cannot outrun the card transition.
+        nativeDriver: false,
+        nativePreparing: false,
+      })
+    );
+    this.emitUpdateEvent();
+    return true;
+  }
+
+  private startClosingTransitionsPreview(): void {
+    if (!this.closeSyncPreviewTransitions) return;
+    const hasPausedTransition = this.closeSyncPreviewTransitions.some(
+      (transition) =>
+        !transition.nativePreparing && !transition.nativeDriver
+    );
+    if (!hasPausedTransition) return;
+
+    // The prepared native views already exist, so start them imperatively with
+    // the card instead of waiting for Fabric to commit another render.
+    this.closingTransitionStarter?.();
+    this.closeSyncPreviewTransitions = this.closeSyncPreviewTransitions.map(
+      (transition) => ({
+        ...transition,
+        nativeDriver: true,
+      })
+    );
+    this.emitUpdateEvent();
+  }
+
+  setClosingTransitionStarter(starter?: () => void): void {
+    this.closingTransitionStarter = starter;
   }
 
   clearClosingTransitionsPreview(): void {

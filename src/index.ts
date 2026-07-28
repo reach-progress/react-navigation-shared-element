@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Platform } from "react-native";
 import {
   waitForSharedElementTransitionsReady,
   SharedElementTransitionsReadyResult,
@@ -13,6 +14,14 @@ export { default as createSharedElementStackNavigator } from "./createSharedElem
 
 export { default as SharedElement } from "./SharedElement";
 const CLOSE_SYNC_TIMEOUT_MS = 180;
+const waitForRenderCommit = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      // The first callback ends the event batch that queued the renderer
+      // update. The second confirms Fabric had a frame in which to commit it.
+      requestAnimationFrame(() => resolve());
+    });
+  });
 
 export function useSharedElementCloseSync() {
   const rendererData = React.useContext(SharedElementRendererContext);
@@ -35,7 +44,14 @@ export function useSharedElementCloseSync() {
           timeoutMs: CLOSE_SYNC_TIMEOUT_MS,
         }
       );
-      if (!result.ready) {
+      if (Platform.OS === "android") {
+        const activated = rendererData.activateClosingTransitionsPreview();
+        if (activated) {
+          await waitForRenderCommit();
+        }
+      } else if (!result.ready) {
+        // Other platforms keep the package's original probe lifecycle. The
+        // early activation only works around Android Fabric commit ordering.
         rendererData.clearClosingTransitionsPreview();
       }
       return result;
