@@ -11,19 +11,43 @@ type PropsType = {
 
 export default class SharedElementRendererView extends React.PureComponent<PropsType> {
   private subscription?: SharedElementEventSubscription;
+  private transitionRefs = new Map<string, SharedElementTransition>();
 
   componentDidMount() {
+    this.props.rendererData.setClosingTransitionStarter(
+      this.startClosingTransitions
+    );
     this.subscription = this.props.rendererData.addUpdateListener(() => {
       this.forceUpdate();
     });
   }
 
   componentWillUnmount() {
+    this.props.rendererData.setClosingTransitionStarter(undefined);
     if (this.subscription) {
       this.subscription();
       this.subscription = undefined;
     }
   }
+
+  private startClosingTransitions = () => {
+    // These views were mounted by the close preview, so they can start without
+    // waiting for another React render and Fabric commit.
+    this.transitionRefs.forEach((transition) => {
+      transition.startNativeAnimation();
+    });
+  };
+
+  private setTransitionRef = (
+    key: string,
+    transition: SharedElementTransition | null
+  ) => {
+    if (transition) {
+      this.transitionRefs.set(key, transition);
+    } else {
+      this.transitionRefs.delete(key);
+    }
+  };
 
   render() {
     const transitions = this.props.rendererData.getTransitions();
@@ -35,9 +59,18 @@ export default class SharedElementRendererView extends React.PureComponent<Props
             // @ts-ignore
             { key, ...props },
             index
-          ) => (
-            <SharedElementTransition key={`${key}:${index}`} {...props} />
-          )
+          ) => {
+            const transitionKey = `${key}:${index}`;
+            return (
+              <SharedElementTransition
+                key={transitionKey}
+                ref={(transition) =>
+                  this.setTransitionRef(transitionKey, transition)
+                }
+                {...props}
+              />
+            );
+          }
         )}
       </View>
     );

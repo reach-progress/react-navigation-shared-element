@@ -5,7 +5,12 @@ import {
 } from "@react-navigation/stack";
 import hoistNonReactStatics from "hoist-non-react-statics";
 import * as React from "react";
-import { View, StyleSheet, InteractionManager } from "react-native";
+import {
+  View,
+  StyleSheet,
+  InteractionManager,
+  Platform,
+} from "react-native";
 import { nodeFromRef } from "react-native-shared-element";
 
 import { ISharedElementRendererData } from "./SharedElementRendererData";
@@ -90,6 +95,7 @@ function createSharedElementScene(
       verbose
     );
     private lastTransitionClosing: boolean | undefined;
+    private sceneRef: View | null = null;
 
     static readonly config = config;
 
@@ -135,6 +141,12 @@ function createSharedElementScene(
         typeof closingFromEvent === "boolean"
           ? closingFromEvent
           : this.lastTransitionClosing;
+      if (closing && Platform.OS === "android") {
+        // React Navigation can briefly reset the closing card's progress while
+        // removing it. Latch its contents off after the real transition ends
+        // so that teardown frame cannot flash over the destination screen.
+        this.sceneRef?.setNativeProps({ style: { opacity: 0 } });
+      }
       rendererData.endTransition(
         closing,
         navigatorId,
@@ -167,7 +179,8 @@ function createSharedElementScene(
       this.sceneData.updateRoute(this.props.route);
     }
 
-    private onSetRef = (ref: any) => {
+    private onSetRef = (ref: View | null) => {
+      this.sceneRef = ref;
       this.sceneData.setAncestor(nodeFromRef(ref));
     };
 
