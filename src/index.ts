@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Platform } from "react-native";
 import {
   waitForSharedElementTransitionsReady,
   SharedElementTransitionsReadyResult,
@@ -44,15 +43,9 @@ export function useSharedElementCloseSync() {
           timeoutMs: CLOSE_SYNC_TIMEOUT_MS,
         }
       );
-      if (Platform.OS === "android") {
-        const activated = rendererData.activateClosingTransitionsPreview();
-        if (activated) {
-          await waitForRenderCommit();
-        }
-      } else if (!result.ready) {
-        // Other platforms keep the package's original probe lifecycle. The
-        // early activation only works around Android Fabric commit ordering.
-        rendererData.clearClosingTransitionsPreview();
+      const activated = rendererData.activateClosingTransitionsPreview();
+      if (activated) {
+        await waitForRenderCommit();
       }
       return result;
     },

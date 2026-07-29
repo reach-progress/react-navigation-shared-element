@@ -3,7 +3,6 @@ import {
   clearSharedElementSnapshots,
   supportsSharedElementSnapshots,
 } from "react-native-shared-element";
-import { Platform } from "react-native";
 
 import { SharedElementCompatRouteProxy } from "./SharedElementCompatRouteProxy";
 import SharedElementSceneData, {
@@ -181,7 +180,7 @@ export default class SharedElementRendererData
       }
     }
 
-    if (closing && Platform.OS === "android") {
+    if (closing) {
       this.startClosingTransitionsPreview();
     }
   }
@@ -672,10 +671,7 @@ export default class SharedElementRendererData
     // The close probe is already measured before navigation starts. Reuse that
     // native view until transitionEnd so the image animation stays aligned
     // with the card instead of mounting after the card has finished.
-    if (
-      Platform.OS === "android" &&
-      this.closeSyncPreviewTransitions
-    ) {
+    if (this.closeSyncPreviewTransitions) {
       return this.closeSyncPreviewTransitions;
     }
     if (!sharedElements || !scene || !prevScene) {
@@ -756,35 +752,20 @@ export default class SharedElementRendererData
   primeClosingTransitionsPreview(): SharedElementTransitionProps[] {
     const transitions = this.computeClosingTransitionsPreview();
     this.closeSyncPreviewTransitions = transitions.length
-      ? transitions.map((transition) => {
-          if (Platform.OS === "android") {
-            return {
-              ...transition,
-              nativeDriver: false,
-              // Android reuses this exact view for its close animation, so
-              // retain the native timing while measurements warm up invisibly.
-              nativePreparing: true,
-            };
-          }
-          return {
-            ...transition,
-            nativeDriver: false,
-            nativeDuration: undefined,
-            nativeDelay: undefined,
-            nativeFrom: undefined,
-            nativeTo: undefined,
-            nativeGroup: undefined,
-            nativeGroupSize: undefined,
-            nativePreparing: true,
-          };
-        })
+      ? transitions.map((transition) => ({
+          ...transition,
+          nativeDriver: false,
+          // Reuse this measured view for the close animation. Retaining its
+          // native timing lets transitionStart release the paused overlay and
+          // card together instead of mounting a late replacement.
+          nativePreparing: true,
+        }))
       : null;
     this.emitUpdateEvent();
     return transitions;
   }
 
   activateClosingTransitionsPreview(): boolean {
-    if (Platform.OS !== "android") return false;
     if (!this.closeSyncPreviewTransitions) return false;
     const hasPreparingTransition = this.closeSyncPreviewTransitions.some(
       (transition) => transition.nativePreparing
