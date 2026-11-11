@@ -5,12 +5,7 @@ import {
 } from "@react-navigation/stack";
 import hoistNonReactStatics from "hoist-non-react-statics";
 import * as React from "react";
-import {
-  View,
-  StyleSheet,
-  InteractionManager,
-  Platform,
-} from "react-native";
+import { View, StyleSheet, Platform } from "react-native";
 import { nodeFromRef } from "react-native-shared-element";
 
 import { ISharedElementRendererData } from "./SharedElementRendererData";
@@ -207,7 +202,8 @@ function createSharedElementScene(
 
       this.sceneData.updateRoute(route);
       rendererData.updateSceneState(this.sceneData, "willFocus");
-      InteractionManager.runAfterInteractions(() => {
+      // Keep the same scheduling used by InteractionManager before RN 0.88.
+      setImmediate(() => {
         //console.log("onDidFocus: ", this.props.route);
         this.sceneData.updateRoute(this.props.route);
         rendererData.updateSceneState(this.sceneData, "didFocus");
